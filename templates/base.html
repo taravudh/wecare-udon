@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}WeCare - Municipal Incident Management System{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .leaflet-container {
+            font-family: inherit;
+        }
+        .leaflet-popup-content-wrapper {
+            border-radius: 0.5rem;
+        }
+        .line-clamp-2 {
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+        }
+        .logo-container {
+            transition: all 0.3s ease;
+        }
+        .logo-container:hover {
+            transform: scale(1.05);
+        }
+        .notification-badge {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .notification-dropdown {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .notification-item:hover {
+            background-color: #f3f4f6;
+        }
+        .notification-unread {
+            background-color: #eff6ff;
+            border-left: 4px solid #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen flex flex-col">
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-4">
+                    <div class="flex-shrink-0 p-2 bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-lg">
+                        <i class="fas fa-heart text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900">WeCare:Udon</h1>
+                        <!-- <p class="text-sm text-gray-500">Community Care Platform</p> -->
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    {% if current_user %}
+                        <!-- Notifications -->
+                        <div class="relative">
+                            <button id="notificationBtn" class="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors">
+                                <i class="fas fa-bell text-xl"></i>
+                                <span id="notificationBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center notification-badge hidden">0</span>
+                            </button>
+                            
+                            <!-- Notification Dropdown -->
+                            <div id="notificationDropdown" class="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50 hidden">
+                                <div class="p-4 border-b border-gray-200 flex items-center justify-between">
+                                    <h3 class="font-semibold text-gray-900">Notifications</h3>
+                                    <button id="markAllReadBtn" class="text-sm text-emerald-600 hover:text-emerald-800">Mark all read</button>
+                                </div>
+                                <div id="notificationList" class="notification-dropdown">
+                                    <div class="p-4 text-center text-gray-500">
+                                        <i class="fas fa-bell-slash text-2xl mb-2"></i>
+                                        <p>No notifications</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- User Info -->
+                        <div class="hidden md:block text-right">
+                            <p class="text-sm font-medium text-gray-900">{{ current_user.full_name }}</p>
+                            <p class="text-xs text-gray-500">
+                                {{ current_user.role.title() }}
+                                {% if current_user.department %}
+                                    - {{ current_user.department.name }}
+                                {% endif %}
+                            </p>
+                        </div>
+                        
+                        <!-- Navigation based on role -->
+                        <nav class="hidden md:flex space-x-1">
+                            {% if current_user.role == 'admin' %}
+                                <a href="{{ url_for('admin_dashboard') }}" 
+                                   class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                          {% if request.endpoint == 'admin_dashboard' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                    Admin Dashboard
+                                </a>
+                                <a href="{{ url_for('reports_dashboard') }}" 
+                                   class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                          {% if request.endpoint == 'reports_dashboard' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                    Reports
+                                </a>
+                            {% elif current_user.role == 'governor' %}
+                                <a href="{{ url_for('governor_dashboard') }}" 
+                                   class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                          {% if request.endpoint == 'governor_dashboard' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                    Governor Dashboard
+                                </a>
+                                <a href="{{ url_for('reports_dashboard') }}" 
+                                   class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                          {% if request.endpoint == 'reports_dashboard' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                    Reports
+                                </a>
+                            {% elif current_user.role == 'officer' %}
+                                <a href="{{ url_for('officer_dashboard') }}" 
+                                   class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                          {% if request.endpoint == 'officer_dashboard' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                    My Assignments
+                                </a>
+                            {% endif %}
+                            
+                            <a href="{{ url_for('citizen_dashboard') }}" 
+                               class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                      {% if request.endpoint == 'citizen_dashboard' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                View Reports
+                            </a>
+                        </nav>
+                        
+                        <!-- Logout Button -->
+                        <a href="{{ url_for('logout') }}" 
+                           class="flex items-center space-x-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <span class="hidden sm:inline">Logout</span>
+                        </a>
+                    {% else %}
+                        <!-- Public Navigation -->
+                        <nav class="flex space-x-1">
+                            <a href="{{ url_for('index') }}" 
+                               class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                      {% if request.endpoint == 'index' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                Report Issue
+                            </a>
+                            <a href="{{ url_for('citizen_dashboard') }}" 
+                               class="px-4 py-2 rounded-lg font-medium transition-all duration-200 
+                                      {% if request.endpoint == 'citizen_dashboard' %}bg-emerald-100 text-emerald-700 shadow-sm{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                                View Reports
+                            </a>
+                        </nav>
+                        
+                        <!-- Staff Login Button -->
+                        <a href="{{ url_for('login') }}" 
+                           class="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+                            <i class="fas fa-building"></i>
+                            <span>Staff Login</span>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8 flex-grow">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-red-50 text-red-700 border border-red-200{% elif category == 'success' %}bg-green-50 text-green-700 border border-green-200{% else %}bg-blue-50 text-blue-700 border border-blue-200{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p class="text-sm font-medium text-gray-900 mb-1">WeCare</p>
+                    <p class="text-xs text-gray-500">Community Care Platform</p>
+                </div>
+                
+                <div class="text-center md:text-right">
+                    <p class="text-sm text-gray-600 mb-1">
+                        Developed by <span class="font-semibold text-emerald-600">The Mapper Co.,Ltd.</span>
+                    </p>
+                    <p class="text-xs text-gray-500">
+                        © {{ current_year or 2024 }} All rights reserved.
+                    </p>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-gray-100">
+                <div class="flex flex-col sm:flex-row justify-between items-center text-xs text-gray-500">
+                    <p>Caring for our community together</p>
+                    <div class="flex space-x-4 mt-2 sm:mt-0">
+                        <span>Privacy Policy</span>
+                        <span>Terms of Service</span>
+                        <span>Contact Support</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Global JavaScript functions
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+                type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+            }`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
+        // Thailand timezone utility functions
+        function convertToThailandTime(utcDateString) {
+            if (!utcDateString) return '';
+            
+            const utcDate = new Date(utcDateString);
+            // Add 7 hours for GMT+7 (Thailand timezone)
+            const thailandDate = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+            return thailandDate;
+        }
+
+        function formatThailandDateTime(utcDateString, format = 'datetime') {
+            if (!utcDateString) return '';
+            
+            const thailandDate = convertToThailandTime(utcDateString);
+            
+            const options = {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            };
+            
+            if (format === 'date') {
+                delete options.hour;
+                delete options.minute;
+                delete options.hour12;
+            } else if (format === 'time') {
+                delete options.year;
+                delete options.month;
+                delete options.day;
+            }
+            
+            return thailandDate.toLocaleString('en-GB', options).replace(',', '');
+        }
+
+        function formatRelativeTime(utcDateString) {
+            if (!utcDateString) return '';
+            
+            const thailandDate = convertToThailandTime(utcDateString);
+            const now = new Date();
+            const diffInMinutes = Math.floor((now - thailandDate) / (1000 * 60));
+            
+            if (diffInMinutes < 1) return 'Just now';
+            if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+            if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+            if (diffInMinutes < 10080) return `${Math.floor(diffInMinutes / 1440)}d ago`;
+            
+            return formatThailandDateTime(utcDateString, 'date');
+        }
+
+        // Notification System
+        let notificationDropdownOpen = false;
+
+        async function loadNotifications() {
+            try {
+                const response = await fetch('/api/notifications');
+                const notifications = await response.json();
+                
+                const notificationList = document.getElementById('notificationList');
+                const notificationBadge = document.getElementById('notificationBadge');
+                
+                if (notifications.length === 0) {
+                    notificationList.innerHTML = `
+                        <div class="p-4 text-center text-gray-500">
+                            <i class="fas fa-bell-slash text-2xl mb-2"></i>
+                            <p>No notifications</p>
+                        </div>
+                    `;
+                    notificationBadge.classList.add('hidden');
+                } else {
+                    const unreadCount = notifications.filter(n => !n.is_read).length;
+                    
+                    if (unreadCount > 0) {
+                        notificationBadge.textContent = unreadCount;
+                        notificationBadge.classList.remove('hidden');
+                    } else {
+                        notificationBadge.classList.add('hidden');
+                    }
+                    
+                    notificationList.innerHTML = notifications.map(notification => `
+                        <div class="notification-item p-4 border-b border-gray-100 cursor-pointer ${!notification.is_read ? 'notification-unread' : ''}" 
+                             onclick="markNotificationRead('${notification.id}', ${!notification.is_read})">
+                            <div class="flex items-start space-x-3">
+                                <div class="flex-shrink-0">
+                                    <i class="fas ${getNotificationIcon(notification.type)} text-${getNotificationColor(notification.type)}-500"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900">${notification.title}</p>
+                                    <p class="text-sm text-gray-600 mt-1">${notification.message}</p>
+                                    <p class="text-xs text-gray-500 mt-2">${formatRelativeTime(notification.created_at)}</p>
+                                </div>
+                                ${!notification.is_read ? '<div class="flex-shrink-0"><div class="w-2 h-2 bg-blue-500 rounded-full"></div></div>' : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load notifications:', error);
+            }
+        }
+
+        function getNotificationIcon(type) {
+            switch (type) {
+                case 'success': return 'fa-check-circle';
+                case 'warning': return 'fa-exclamation-triangle';
+                case 'error': return 'fa-times-circle';
+                default: return 'fa-info-circle';
+            }
+        }
+
+        function getNotificationColor(type) {
+            switch (type) {
+                case 'success': return 'green';
+                case 'warning': return 'yellow';
+                case 'error': return 'red';
+                default: return 'blue';
+            }
+        }
+
+        async function markNotificationRead(notificationId, wasUnread) {
+            if (!wasUnread) return;
+            
+            try {
+                await fetch(`/api/notifications/${notificationId}/read`, {
+                    method: 'POST'
+                });
+                loadNotifications();
+            } catch (error) {
+                console.error('Failed to mark notification as read:', error);
+            }
+        }
+
+        async function markAllNotificationsRead() {
+            try {
+                await fetch('/api/notifications/mark_all_read', {
+                    method: 'POST'
+                });
+                loadNotifications();
+            } catch (error) {
+                console.error('Failed to mark all notifications as read:', error);
+            }
+        }
+
+        // Initialize notifications for logged-in users
+        {% if current_user %}
+        document.addEventListener('DOMContentLoaded', function() {
+            loadNotifications();
+            
+            // Refresh notifications every 30 seconds
+            setInterval(loadNotifications, 30000);
+            
+            // Notification dropdown toggle
+            const notificationBtn = document.getElementById('notificationBtn');
+            const notificationDropdown = document.getElementById('notificationDropdown');
+            const markAllReadBtn = document.getElementById('markAllReadBtn');
+            
+            notificationBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                notificationDropdownOpen = !notificationDropdownOpen;
+                
+                if (notificationDropdownOpen) {
+                    notificationDropdown.classList.remove('hidden');
+                    loadNotifications();
+                } else {
+                    notificationDropdown.classList.add('hidden');
+                }
+            });
+            
+            markAllReadBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                markAllNotificationsRead();
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function() {
+                if (notificationDropdownOpen) {
+                    notificationDropdown.classList.add('hidden');
+                    notificationDropdownOpen = false;
+                }
+            });
+            
+            notificationDropdown.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+
+            // Convert all displayed timestamps to Thailand time
+            convertTimestampsToThailand();
+        });
+        {% endif %}
+
+        // Convert all timestamps on page to Thailand time
+        function convertTimestampsToThailand() {
+            // Find all elements with data-utc-time attribute
+            const timestampElements = document.querySelectorAll('[data-utc-time]');
+            
+            timestampElements.forEach(element => {
+                const utcTime = element.getAttribute('data-utc-time');
+                const format = element.getAttribute('data-format') || 'datetime';
+                const thailandTime = formatThailandDateTime(utcTime, format);
+                element.textContent = thailandTime;
+            });
+
+            // Find all elements with data-relative-time attribute
+            const relativeElements = document.querySelectorAll('[data-relative-time]');
+            
+            relativeElements.forEach(element => {
+                const utcTime = element.getAttribute('data-relative-time');
+                const relativeTime = formatRelativeTime(utcTime);
+                element.textContent = relativeTime;
+            });
+        }
+
+        // Auto-convert timestamps on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            convertTimestampsToThailand();
+        });
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>
