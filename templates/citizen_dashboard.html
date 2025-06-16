@@ -103,7 +103,7 @@
                         </button>
                     </div>
                 </div>
-                
+
                 <!-- Date Range Filter -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                     <div>
@@ -126,11 +126,11 @@
             <div id="reportsList" class="space-y-4">
                 {% if incidents %}
                     {% for incident in incidents %}
-                    <div class="incident-card bg-gray-50 rounded-lg p-6 hover:shadow-md transition-shadow duration-200" 
-                         data-status="{{ incident.status }}" 
+                    <div class="incident-card bg-gray-50 rounded-lg p-6 hover:shadow-md transition-shadow duration-200"
+                         data-status="{{ incident.status }}"
                          data-category="{{ incident.category }}"
                          data-priority="{{ incident.priority }}"
-                         data-title="{{ incident.title.lower() }}" 
+                         data-title="{{ incident.title.lower() }}"
                          data-description="{{ incident.description.lower() if incident.description else '' }}">
                         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4">
                             <div class="flex-1">
@@ -143,7 +143,7 @@
                                 {% if incident.description %}
                                 <p class="text-gray-600 mb-3 line-clamp-2">{{ incident.description }}</p>
                                 {% endif %}
-                                
+
                                 <div class="flex flex-wrap gap-4 text-sm text-gray-500">
                                     <div class="flex items-center">
                                         <i class="fas fa-calendar mr-1"></i>
@@ -167,7 +167,7 @@
                                         Assigned to {{ incident.assignee.full_name }}
                                     </div>
                                     {% endif %}
-                                    {% if incident.photos %}
+                                    {% if incident.photos and incident.photos|length > 0 %}
                                     <div class="flex items-center">
                                         <i class="fas fa-camera mr-1"></i>
                                         {{ incident.photos|length }} photo(s)
@@ -175,9 +175,9 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            
+
                             <div class="mt-4 sm:mt-0 sm:ml-4 flex flex-col space-y-2">
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border 
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border
                                     {% if incident.status == 'pending' %}bg-orange-100 text-orange-800 border-orange-200
                                     {% elif incident.status == 'in_progress' %}bg-blue-100 text-blue-800 border-blue-200
                                     {% elif incident.status == 'resolved' %}bg-green-100 text-green-800 border-green-200
@@ -190,8 +190,8 @@
                                     {% endif %}
                                     <span class="capitalize">{{ incident.status.replace('_', ' ') }}</span>
                                 </span>
-                                
-                                <span class="px-2 py-1 text-xs font-medium rounded-full 
+
+                                <span class="px-2 py-1 text-xs font-medium rounded-full
                                     {% if incident.priority == 'low' %}bg-green-100 text-green-800
                                     {% elif incident.priority == 'medium' %}bg-yellow-100 text-yellow-800
                                     {% elif incident.priority == 'high' %}bg-orange-100 text-orange-800
@@ -204,22 +204,22 @@
 
                         <div class="flex items-center justify-between">
                             <div class="flex space-x-4">
-                                <button class="text-emerald-600 hover:text-emerald-800 text-sm font-medium" 
+                                <button class="text-emerald-600 hover:text-emerald-800 text-sm font-medium"
                                         onclick="showOnMap({{ incident.latitude }}, {{ incident.longitude }})">
                                     <i class="fas fa-map-marker-alt mr-1"></i>
                                     View on Map
                                 </button>
-                                
-                                {% if incident.photos %}
-                                <button class="text-purple-600 hover:text-purple-800 text-sm font-medium" 
+
+                                {% if incident.photos and incident.photos|length > 0 %}
+                                <button class="text-purple-600 hover:text-purple-800 text-sm font-medium"
                                         onclick="showPhotos('{{ incident.id }}')">
                                     <i class="fas fa-images mr-1"></i>
                                     View Photos
                                 </button>
                                 {% endif %}
                             </div>
-                            
-                            <button class="text-gray-600 hover:text-gray-800 text-sm font-medium" 
+
+                            <button class="text-gray-600 hover:text-gray-800 text-sm font-medium"
                                     onclick="showUpdates('{{ incident.id }}')">
                                 <i class="fas fa-history mr-1"></i>
                                 View Updates
@@ -293,21 +293,21 @@
 
     function applyFilters() {
         const params = new URLSearchParams();
-        
+
         const search = document.getElementById('searchInput').value;
         const status = document.getElementById('statusFilter').value;
         const category = document.getElementById('categoryFilter').value;
         const priority = document.getElementById('priorityFilter').value;
         const dateFrom = document.getElementById('dateFrom').value;
         const dateTo = document.getElementById('dateTo').value;
-        
+
         if (search) params.append('search', search);
         if (status !== 'all') params.append('status', status);
         if (category !== 'all') params.append('category', category);
         if (priority !== 'all') params.append('priority', priority);
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
-        
+
         window.location.href = `${window.location.pathname}?${params.toString()}`;
     }
 
@@ -344,7 +344,7 @@
         }
 
         modalMarker = L.marker([lat, lng]).addTo(modalMap);
-        
+
         // Invalidate size to fix display issues
         setTimeout(() => {
             modalMap.invalidateSize();
@@ -358,32 +358,44 @@
     async function showPhotos(incidentId) {
         const modal = document.getElementById('photosModal');
         const content = document.getElementById('photosContent');
-        
+
+        // Show loading state
+        content.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i><p class="text-gray-600 mt-2">Loading photos...</p></div>';
+        modal.classList.remove('hidden');
+
         try {
+            console.log('Loading photos for incident:', incidentId);
             const response = await fetch(`/api/incidents/${incidentId}`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
             const incident = await response.json();
-            
+            console.log('Incident data:', incident);
+            console.log('Photos:', incident.photos);
+
             if (!incident.photos || incident.photos.length === 0) {
-                content.innerHTML = '<p class="text-gray-600 text-center">No photos available for this issue.</p>';
+                content.innerHTML = '<div class="text-center py-8"><i class="fas fa-camera-retro text-4xl text-gray-400 mb-4"></i><p class="text-gray-600">No photos available for this issue.</p></div>';
             } else {
                 content.innerHTML = `
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         ${incident.photos.map(photo => `
                             <div class="relative group cursor-pointer" onclick="viewFullImage('${photo.url}')">
-                                <img src="${photo.url}" alt="Issue photo" class="w-full h-48 object-cover rounded-lg" />
+                                <img src="${photo.url}" alt="Issue photo" class="w-full h-48 object-cover rounded-lg"
+                                     onerror="this.parentElement.innerHTML='<div class=\\'w-full h-48 bg-gray-200 rounded-lg flex items-center justify-center\\'>Image not found</div>'" />
                                 <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
                                     <i class="fas fa-expand text-white text-2xl"></i>
                                 </div>
+                                ${photo.original_filename ? `<div class="absolute bottom-2 left-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">${photo.original_filename}</div>` : ''}
                             </div>
                         `).join('')}
                     </div>
                 `;
             }
-            
-            modal.classList.remove('hidden');
         } catch (error) {
-            content.innerHTML = '<p class="text-red-600 text-center">Error loading photos.</p>';
-            modal.classList.remove('hidden');
+            console.error('Error loading photos:', error);
+            content.innerHTML = '<div class="text-center py-8"><i class="fas fa-exclamation-triangle text-4xl text-red-400 mb-4"></i><p class="text-red-600">Error loading photos. Please try again.</p></div>';
         }
     }
 
@@ -396,14 +408,15 @@
         modal.className = 'fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50';
         modal.innerHTML = `
             <div class="relative max-w-full max-h-full p-4">
-                <img src="${src}" class="max-w-full max-h-full object-contain rounded-lg" />
+                <img src="${src}" class="max-w-full max-h-full object-contain rounded-lg"
+                     onerror="this.parentElement.innerHTML='<div class=\\'text-white text-center\\'>Image could not be loaded</div>'" />
                 <button class="absolute top-2 right-2 bg-white text-black rounded-full w-10 h-10 flex items-center justify-center hover:bg-gray-200 transition-colors" onclick="this.parentElement.parentElement.remove()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
         `;
         document.body.appendChild(modal);
-        
+
         modal.addEventListener('click', function(e) {
             if (e.target === modal) {
                 modal.remove();
@@ -414,11 +427,11 @@
     async function showUpdates(incidentId) {
         const modal = document.getElementById('updatesModal');
         const content = document.getElementById('updatesContent');
-        
+
         try {
             const response = await fetch(`/api/incident_updates/${incidentId}`);
             const updates = await response.json();
-            
+
             if (updates.length === 0) {
                 content.innerHTML = '<p class="text-gray-600 text-center">No updates available for this issue.</p>';
             } else {
@@ -436,11 +449,11 @@
                         ${update.notes ? `<p class="text-gray-700">${update.notes}</p>` : ''}
                     </div>
                 `).join('');
-                
+
                 // Convert timestamps in the modal
                 convertTimestampsToThailand();
             }
-            
+
             modal.classList.remove('hidden');
         } catch (error) {
             content.innerHTML = '<p class="text-red-600 text-center">Error loading updates.</p>';

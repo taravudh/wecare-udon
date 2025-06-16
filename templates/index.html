@@ -101,11 +101,11 @@
                             Photos (Optional)
                         </label>
                         <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-emerald-400 hover:bg-emerald-50 transition-colors duration-200">
-                            <input type="file" id="photos" multiple accept="image/*" class="hidden" />
+                            <input type="file" id="photos" multiple accept="image/*,image/heic,image/heif" capture="environment" class="hidden" />
                             <label for="photos" class="cursor-pointer">
                                 <i class="fas fa-camera text-4xl text-gray-400 mb-4"></i>
-                                <p class="text-gray-600 mb-2">Click to upload photos</p>
-                                <p class="text-sm text-gray-500">JPG, PNG, WebP up to 10MB each</p>
+                                <p class="text-gray-600 mb-2">Click to upload photos or take a picture</p>
+                                <p class="text-sm text-gray-500">JPG, PNG, WebP, HEIC up to 10MB each</p>
                             </label>
                         </div>
                         <div id="photoPreview" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4 hidden"></div>
@@ -113,7 +113,7 @@
                             <div class="bg-gray-200 rounded-full h-2">
                                 <div id="progressBar" class="bg-emerald-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
                             </div>
-                            <p class="text-sm text-gray-600 mt-2">Uploading photos...</p>
+                            <p class="text-sm text-gray-600 mt-2" id="progressText">Preparing photos...</p>
                         </div>
                     </div>
                 </div>
@@ -129,7 +129,7 @@
                                 <i class="fas fa-map-marker-alt"></i>
                                 <span>Click on the map to select location</span>
                             </div>
-                            
+
                             <div id="map" class="h-64 rounded-lg overflow-hidden"></div>
                         </div>
                     </div>
@@ -184,8 +184,8 @@
 
     // Initialize map
     function initMap() {
-        map = L.map('map').setView([37.7749, -122.4194], 13);
-        
+        map = L.map('map').setView([13.7563, 100.5018], 13); // Default to Bangkok
+
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
@@ -197,6 +197,9 @@
                 const lng = position.coords.longitude;
                 map.setView([lat, lng], 15);
                 setLocation(lat, lng);
+            }, function(error) {
+                console.log('Geolocation error:', error);
+                // Keep default Bangkok location
             });
         }
 
@@ -207,45 +210,60 @@
 
     function setLocation(lat, lng) {
         selectedLocation = { lat, lng };
-        
+
         if (marker) {
             map.removeLayer(marker);
         }
-        
+
         marker = L.marker([lat, lng]).addTo(map);
-        
+
         document.getElementById('locationInfo').innerHTML = `
             <i class="fas fa-map-marker-alt text-green-500"></i>
             <span class="text-green-600">${lat.toFixed(6)}, ${lng.toFixed(6)}</span>
         `;
     }
 
-    // Handle photo upload with progress
+    // Enhanced photo handling for mobile devices
     document.getElementById('photos').addEventListener('change', async function(e) {
         const files = Array.from(e.target.files);
         const preview = document.getElementById('photoPreview');
         const progressDiv = document.getElementById('uploadProgress');
         const progressBar = document.getElementById('progressBar');
-        
+        const progressText = document.getElementById('progressText');
+
         if (files.length === 0) return;
-        
+
+        console.log('Processing', files.length, 'files');
+
         // Show progress
         progressDiv.classList.remove('hidden');
-        
-        let uploadedCount = 0;
+        progressText.textContent = 'Processing photos...';
+
+        let processedCount = 0;
         const totalFiles = files.length;
-        
+
         for (const file of files) {
-            if (file.type.startsWith('image/') && file.size <= 10 * 1024 * 1024) { // 10MB limit
+            console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size);
+
+            if (file.size <= 10 * 1024 * 1024) { // 10MB limit
                 try {
-                    // Create preview immediately
+                    // Handle different image formats including HEIC
+                    let processedFile = file;
+
+                    // For HEIC files or very large files, we might need conversion
+                    if (file.type === 'image/heic' || file.type === 'image/heif' || file.size > 5 * 1024 * 1024) {
+                        progressText.textContent = `Converting ${file.name}...`;
+                        processedFile = await convertAndCompressImage(file);
+                    }
+
+                    // Create preview
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         const photoDiv = document.createElement('div');
                         photoDiv.className = 'relative group';
                         photoDiv.innerHTML = `
                             <img src="${e.target.result}" class="w-full h-20 object-cover rounded-lg" />
-                            <button type="button" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onclick="removePhoto(this)">
+                            <button type="button" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onclick="removePhoto(this, '${file.name}')">
                                 <i class="fas fa-times text-xs"></i>
                             </button>
                             <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -255,33 +273,113 @@
                         preview.appendChild(photoDiv);
                         preview.classList.remove('hidden');
                     };
-                    reader.readAsDataURL(file);
-                    
-                    uploadedPhotos.push(file);
-                    uploadedCount++;
-                    
+                    reader.readAsDataURL(processedFile);
+
+                    uploadedPhotos.push({
+                        file: processedFile,
+                        originalName: file.name
+                    });
+                    processedCount++;
+
                     // Update progress
-                    const progress = (uploadedCount / totalFiles) * 100;
+                    const progress = (processedCount / totalFiles) * 100;
                     progressBar.style.width = `${progress}%`;
-                    
+                    progressText.textContent = `Processed ${processedCount} of ${totalFiles} photos`;
+
                 } catch (error) {
-                    console.error('Error processing file:', error);
+                    console.error('Error processing file:', file.name, error);
+                    progressText.textContent = `Error processing ${file.name}`;
                 }
+            } else {
+                console.warn('File too large:', file.name, file.size);
+                progressText.textContent = `File ${file.name} is too large (max 10MB)`;
             }
         }
-        
+
         // Hide progress after completion
         setTimeout(() => {
             progressDiv.classList.add('hidden');
-        }, 1000);
+        }, 2000);
+
+        console.log('Total processed photos:', uploadedPhotos.length);
     });
 
-    function removePhoto(button) {
+    // Convert and compress images for better mobile compatibility
+    async function convertAndCompressImage(file) {
+        return new Promise((resolve, reject) => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+
+            img.onload = function() {
+                // Calculate new dimensions (max 1200px on longest side)
+                const maxSize = 1200;
+                let { width, height } = img;
+
+                if (width > height) {
+                    if (width > maxSize) {
+                        height = (height * maxSize) / width;
+                        width = maxSize;
+                    }
+                } else {
+                    if (height > maxSize) {
+                        width = (width * maxSize) / height;
+                        height = maxSize;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            // Create a new File object with the compressed data
+                            const compressedFile = new File([blob], file.name, {
+                                type: 'image/jpeg',
+                                lastModified: Date.now()
+                            });
+                            resolve(compressedFile);
+                        } else {
+                            reject(new Error('Failed to compress image'));
+                        }
+                    },
+                    'image/jpeg',
+                    0.8 // 80% quality
+                );
+            };
+
+            img.onerror = () => reject(new Error('Failed to load image'));
+
+            // Handle different file types
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsDataURL(file);
+            } else {
+                reject(new Error('Not an image file'));
+            }
+        });
+    }
+
+    function removePhoto(button, fileName) {
         button.parentElement.remove();
+
+        // Remove from uploadedPhotos array
+        uploadedPhotos = uploadedPhotos.filter(photo => photo.originalName !== fileName);
+
         const preview = document.getElementById('photoPreview');
         if (preview.children.length === 0) {
             preview.classList.add('hidden');
         }
+
+        console.log('Removed photo:', fileName, 'Remaining:', uploadedPhotos.length);
     }
 
     function viewFullImage(src) {
@@ -296,7 +394,7 @@
             </div>
         `;
         document.body.appendChild(modal);
-        
+
         modal.addEventListener('click', function(e) {
             if (e.target === modal) {
                 modal.remove();
@@ -304,10 +402,10 @@
         });
     }
 
-    // Handle form submission with photo upload
+    // Enhanced form submission with better photo upload handling
     document.getElementById('incidentForm').addEventListener('submit', async function(e) {
         e.preventDefault();
-        
+
         if (!selectedLocation) {
             showError('Please select a location on the map');
             return;
@@ -330,6 +428,8 @@
                 reporter_contact: formData.get('reporter_contact')
             };
 
+            console.log('Creating incident with data:', data);
+
             // Create incident first
             const response = await fetch('/api/incidents', {
                 method: 'POST',
@@ -342,12 +442,19 @@
             if (response.ok) {
                 const incident = await response.json();
                 currentIncidentId = incident.id;
-                
+
+                console.log('Incident created:', incident.id, 'Photos to upload:', uploadedPhotos.length);
+
                 // Upload photos if any
                 if (uploadedPhotos.length > 0) {
-                    await uploadPhotos(incident.id);
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Uploading photos...</span>';
+                    const uploadSuccess = await uploadPhotos(incident.id);
+
+                    if (!uploadSuccess) {
+                        console.warn('Some photos failed to upload, but incident was created');
+                    }
                 }
-                
+
                 showNotification('Issue reported successfully! Thank you for caring about your community.');
                 this.reset();
                 selectedLocation = null;
@@ -359,7 +466,7 @@
                     <i class="fas fa-map-marker-alt"></i>
                     <span>Click on the map to select location</span>
                 `;
-                
+
                 // Redirect to dashboard after 2 seconds
                 setTimeout(() => {
                     window.location.href = '/citizen';
@@ -369,6 +476,7 @@
                 showError(error.error || 'Failed to submit report');
             }
         } catch (error) {
+            console.error('Submission error:', error);
             showError('Network error. Please try again.');
         } finally {
             submitBtn.innerHTML = originalText;
@@ -377,20 +485,37 @@
     });
 
     async function uploadPhotos(incidentId) {
-        for (const photo of uploadedPhotos) {
+        let successCount = 0;
+
+        for (let i = 0; i < uploadedPhotos.length; i++) {
+            const photoData = uploadedPhotos[i];
             try {
+                console.log(`Uploading photo ${i + 1}/${uploadedPhotos.length}:`, photoData.originalName);
+
                 const formData = new FormData();
-                formData.append('file', photo);
+                formData.append('file', photoData.file);
                 formData.append('incident_id', incidentId);
-                
-                await fetch('/api/upload', {
+
+                const response = await fetch('/api/upload', {
                     method: 'POST',
                     body: formData
                 });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Photo uploaded successfully:', result);
+                    successCount++;
+                } else {
+                    const error = await response.json();
+                    console.error('Photo upload failed:', error);
+                }
             } catch (error) {
-                console.error('Error uploading photo:', error);
+                console.error('Error uploading photo:', photoData.originalName, error);
             }
         }
+
+        console.log(`Successfully uploaded ${successCount} of ${uploadedPhotos.length} photos`);
+        return successCount > 0;
     }
 
     function showError(message) {
@@ -398,7 +523,7 @@
         const errorText = document.getElementById('errorText');
         errorText.textContent = message;
         errorDiv.classList.remove('hidden');
-        
+
         setTimeout(() => {
             errorDiv.classList.add('hidden');
         }, 5000);
