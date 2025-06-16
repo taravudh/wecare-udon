@@ -3,3 +3,4 @@ Flask-SQLAlchemy==3.0.5
 Werkzeug==2.3.7
 Pillow==9.5.0
 pytz==2023.3
+gunicorn==21.2.0
